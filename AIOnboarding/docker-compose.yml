@@ -1,0 +1,43 @@
+services:
+  django:
+    build: ./django_app
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./django_app:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=1
+
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+
+  chainlit:
+    build: ./chainlit_agent
+    # Run chainlit on 0.0.0.0 so Docker can expose it, with --watch for hot-reload
+    command: chainlit run app.py --host 0.0.0.0 --port 8000 --watch
+    volumes:
+      - ./chainlit_agent:/app
+    ports:
+      - "8001:8000"  # Map Host 8001 -> Container 8000
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY} # Pass your Gemini Key
+
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
