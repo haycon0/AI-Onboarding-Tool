@@ -4,3 +4,4 @@ __pycache__/
 *.pyo
 *.sqlite3
 .DS_Store
+*api.py
