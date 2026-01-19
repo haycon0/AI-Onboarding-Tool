@@ -27,7 +27,7 @@ class Client(models.Model):
     Has many interactions and potentially multiple departments.
     """
     name = models.CharField(max_length=255)
-    email = models.EmailField(unique=True)
+    email = models.EmailField()
     password = models.CharField(max_length=255)
     departments = models.ManyToManyField(
         Department,
@@ -52,13 +52,18 @@ class Interaction(models.Model):
     client = models.ForeignKey(
         Client,
         on_delete=models.CASCADE,
-        related_name='interactions'
+        related_name='interactions',
+        null=True,
+        blank=True
     )
     department = models.ForeignKey(
         Department,
         on_delete=models.CASCADE,
-        related_name='interactions'
+        related_name='interactions',
+        null=True,
+        blank=True,
     )
+    
     title = models.CharField(max_length=255, blank=True)
     conversation = models.JSONField(
         default=list,
@@ -68,7 +73,8 @@ class Interaction(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.client.name} - {self.department.name}"
+        client_name = self.client.name if self.client else "No Client"
+        return f"{client_name} - {self.department.name}"
 
     class Meta:
         ordering = ['-created_at']

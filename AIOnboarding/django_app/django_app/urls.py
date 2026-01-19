@@ -23,8 +23,10 @@ from .onboarding import views
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("", views.index, name="index"),
-    path('test/', views.members),
+    path('client/', views.clients, name="clients"),
+    path('attorney/', views.departments, name="departments"),
     path('api/message/', views.receive_message, name='receive_message'),
+    path('api/attorney_message/', views.receive_message_department, name="receive_message_department"),
 ]
 
 # Serve media files in development
