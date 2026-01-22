@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script>
+        // Extract user_type from URL first
+        (function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            let userType = urlParams.get('user_type') || 'Client';
+            
+            // Store in multiple places
+            window.USER_TYPE = userType;
+            localStorage.setItem('user_type', userType);
+            sessionStorage.setItem('user_type', userType);
+            
+            console.log('[Chainlit] Initial user type from URL:', userType);
+            
+            // Listen for postMessage from parent
+            window.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'SET_USER_TYPE') {
+                    userType = event.data.user_type;
+                    window.USER_TYPE = userType;
+                    localStorage.setItem('user_type', userType);
+                    sessionStorage.setItem('user_type', userType);
+                    console.log('[Chainlit] User type updated from postMessage:', userType);
+                    
+                    // Trigger custom event for Chainlit
+                    window.dispatchEvent(new CustomEvent('user-type-set', { 
+                        detail: { user_type: userType } 
+                    }));
+                }
+            });
+        })();
+    </script>
+</head>
+<body>
+    <!-- Chainlit will inject its app here -->
+</body>
+</html>

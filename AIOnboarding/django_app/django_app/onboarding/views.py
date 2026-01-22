@@ -95,6 +95,7 @@ def receive_message_department(request):
     API endpoint to receive prompts/messages for the attorney/department.
     Processes the prompt and returns a "message received" confirmation.
     """
+    print("[Django] Processing a message request for department", flush=True)
     try:
         print("[Django] Received a message request for department" + str(request.body), flush=True)
         data = json.loads(request.body)
@@ -118,8 +119,7 @@ def receive_message_department(request):
             'status': 'success',
             'message': 'Message received',
             'original_prompt': prompt,
-            'gemini_response': gemini_response,
-            'interaction_id': interaction_id
+            'gemini_response': gemini_response
         })
     except json.JSONDecodeError:
         return JsonResponse({

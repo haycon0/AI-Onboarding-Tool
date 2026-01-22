@@ -128,7 +128,8 @@ def gemini_prompt(prompt, interaction_id=None):
 
 def gemini_prompt_department(prompt):
     response_from_sql = gemini_sql_query(prompt)
-    prompt = f"{prompt}\n\nResponse from SQL query: {response_from_sql}"
+    print(f"[Gemini] Response from SQL query: {response_from_sql}", flush=True)
+    prompt = f"\n\nResponse from an agentic SQL query: {response_from_sql}\n\n Use that to respond to this prompt: {prompt}"
     client = genai.Client(api_key=api_key())
     chat = client.chats.create(
         model="gemini-2.0-flash",
