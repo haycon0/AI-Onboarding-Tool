@@ -112,7 +112,7 @@ def gemini_prompt(prompt, interaction_id=None):
     history = current_interaction.conversation if current_interaction else []
     client = genai.Client(api_key=api_key())
     chat = client.chats.create(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         history=history,
     )
     response = chat.send_message(message=prompt)
@@ -132,7 +132,7 @@ def gemini_prompt_department(prompt):
     prompt = f"\n\nResponse from an agentic SQL query: {response_from_sql}\n\n Use that to respond to this prompt: {prompt}"
     client = genai.Client(api_key=api_key())
     chat = client.chats.create(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         history=[],
     )
     response = chat.send_message(message=prompt)
@@ -182,9 +182,9 @@ def gemini_sql_query(prompt):
     """
     try:
         # Initialize Gemini LLM
-        # "gemini-2.0-flash" for fast responses with tool calling
+        # "gemini-2.5-flash" for fast responses with tool calling
         llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             temperature=0,
             google_api_key=api_key()
         )

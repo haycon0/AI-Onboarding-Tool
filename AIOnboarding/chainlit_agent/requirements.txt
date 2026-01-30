@@ -1,3 +1,2 @@
 chainlit
-google-generativeai
 httpx
