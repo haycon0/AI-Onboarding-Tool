@@ -27,24 +27,29 @@ class ChangeDepartment(BaseModel):
                                       The possible deparments are Corporate Law, Litigation, Intellectual Property, Real Estate, Employment Law, Tax Law, Environmental Law, Healthcare Law, Family Law, Bankruptcy & Restructuring, International Law, Administrative Law, Energy Law, Construction Law, Financial Services. 
                                       If it is clear the user wants to interact with one of these departments, fill this field with the exact name of the department.""")
 
-def gemini_prompt(prompt, interaction_id=None):
+class InteractionCompleted(BaseModel):
+    completed: bool = Field(description="This should be true when one of the interaction participants say goodbye.")
 
-    # get the interaction history for this client
-    if interaction_id:
-        # Get specific interaction by ID
-        try:
-            current_interaction = Interaction.objects.get(id=interaction_id)
-        except Interaction.DoesNotExist:
-            print(f"[Gemini] Interaction {interaction_id} not found, creating new one", flush=True)
-            current_interaction = None
-    else:
-        # Get the first interaction for this client
-        interactions = Interaction.objects.filter(client=client)
-        current_interaction = interactions.first()
-    
-        # Get the client based on the extracted name if name is present else create a new client
+def normalize_system_instruction(system_instruction):
+    if not system_instruction:
+        return None
+    if isinstance(system_instruction, (list, tuple)):
+        parts = [str(part).strip() for part in system_instruction if part]
+        return "\n\n".join([part for part in parts if part]) or None
+    return str(system_instruction).strip() or None
+
+
+def gemini_prompt(prompt, interaction_id=None):
+    current_interaction = Interaction.objects.filter(id=interaction_id).first() if interaction_id else None
+    user_prompt = prompt
+    system_instructions = ["You are an AI legal assistant helping onboard clients to a law firm."
+                           "Do not make up any legal advice or information. "
+                           "Only get information that you might think is relevant to onboarding a client to a law firm."
+                           "Once you have gathered enough information, please thank the user for providing the information and let them know a legal professional will reach out to them shortly."
+                           f"Do not provide next steps or instructions to the user. Please say goodbye to the user once the interaction is complete."]
+
     if not current_interaction.client or not current_interaction.department:
-        vars = extract_variables_gemini(prompt)
+        vars = extract_variables_gemini(user_prompt)
 
         name = vars.get("name")
         password = vars.get("password")
@@ -55,70 +60,89 @@ def gemini_prompt(prompt, interaction_id=None):
     # Assign client if not already assigned
     if not current_interaction.client:
         if not name or not password or not email:
-            return "Please clearly provide name, password, and email to proceed."
+            return "Please clearly provide a name, password, and email to proceed."
         client = Client.objects.filter(email=email).first() if name else None
         if client and password != client.password:
             return f"Incorrect password for client {name}."
         if not client:
             client = Client.objects.create(name=name, password=password, email=email)
-            print(f"[Gemini] Created new client {client.name}", flush=True)
+            #print(f"[Gemini] Created new client {client.name}", flush=True)
+            system_instructions.append("The client has been added to the system.")
         else:
-            # Please add all interactions to the prompt
-            interactions = Interaction.objects.filter(client=client)
+            #print(f"[Gemini] Found existing client {client.name}", flush=True)
+            system_instructions.append("The client has been identified in the system.")
+        system_instructions.append(f"The client's name is {client.name}, their email is {client.email}, and their password is {client.password}.")
+        current_interaction.client = client
+        current_interaction.save()
+        
+        #print(f"[Gemini] Assigned client {client.name} to interaction {current_interaction.id}", flush=True)
+    
+    if not current_interaction.department and not department:
+        system_instructions.append(
+            "Please determine what the clients legal needs are and the appropriate department for this client based on their legal needs."
+            "Then confirm whith the client that this is the appropriate department."
+        )
+
+    if not current_interaction.system_instructions:
+        interactions = Interaction.objects.filter(client=current_interaction.client).exclude(id=current_interaction.id)
+        if not interactions.exists():
+            current_interaction.system_instructions = "This is the Clients first interaction with the onboarding system."
+        else:
             temp = ""
             for interaction in interactions:
-                temp += f"\nPrevious interaction this client had with {interaction.department.name if interaction.department else 'The system'} - {interaction.conversation}"
+                temp += f"\nPrevious interaction this client had with {interaction.department.name if interaction.department else 'The system'}: {interaction.conversation}"
             if interactions:
-                print(f"[Gemini] Previous interactions: {temp}", flush=True)
-                summary_prompt = f"Please provide a concise summary of these previous interactions in paragraph form retaining relevant legal facts: {temp}"
+                #print(f"[Gemini] Previous interactions: {temp}", flush=True)
+                summary_prompt = f"Please provide a summary of these previous AI onboarding conversations. The response should be in paragraph form retaining relevant legal facts: {temp}"
                 cli = genai.Client(api_key=api_key())
                 response = cli.models.generate_content(
                     model="gemini-2.5-flash",
                     contents=summary_prompt
                 )
-                print(f"[Gemini] Summary of previous interactions: {response.text}", flush=True)
-                prompt = f"""{prompt} Summary of all previous interactions this client had with the system (This is not necessarily relevant for the current interaction): {response.text}"""
-
-        current_interaction.client = client
+                #print(f"[Gemini] Summary of previous interactions: {response.text}", flush=True)
+                
+                current_interaction.system_instructions = (
+                    "Summary of all previous interactions this client had with the onboarding system:"
+                    f"(this is not necessarily relevant for the current interaction): {response.text}"
+                )
         current_interaction.save()
-        prompt = f"""{prompt} Note from the system: The client has been added to the system."""
-        print(f"[Gemini] Assigned client {client.name} to interaction {current_interaction.id}", flush=True)
-    else:
-        if not current_interaction.department and not department:
-            prompt = f"""{prompt} New instructions from the system: Please determine the appropriate department for this client based on their legal needs and confirm that this is the appropriate department."""
-
+    system_instructions.append(current_interaction.system_instructions)
     # Assign department if not already assigned
     if not current_interaction.department and department:
         department_obj = Department.objects.filter(name=department).first()
         current_interaction.department = department_obj
         current_interaction.save()
         print(f"[Gemini] Assigned department {department_obj.name} to interaction {current_interaction.id}", flush=True)
-        prompt = f"""New instructions from the system: {department_obj.prompt} Input from the user: {prompt}"""
-    
-    # Check if the department needs to be changed
-    if current_interaction.department:
-        print(f"[Gemini] Checking if current department for interaction is correct", flush=True)
-        new_department = change_department(prompt, current_interaction.department.name)
-        print(f"[Gemini] New department suggested: {new_department}", flush=True)
-        if new_department and new_department != current_interaction.department.name:
-            # Save the current interaction before changing the department
-            Interaction.objects.create(conversation=current_interaction.conversation, department=current_interaction.department, client=current_interaction.client)
-            current_interaction.department = Department.objects.filter(name=new_department).first()
-            current_interaction.save()
-            prompt = f"""New instructions from the system: {current_interaction.department.prompt} Input from the user: {prompt}"""
-            print(f"[Gemini] Changed department to {new_department} for interaction {current_interaction.id}", flush=True)
-
+        system_instructions.append("The interatction has been assigned to a department." 
+                                    " The department instructions are: "
+                                    f"{department_obj.prompt}")
+    else:
+        # Check if the department needs to be changed
+        if current_interaction.department:
+            #print(f"[Gemini] Checking if current department for interaction is correct", flush=True)
+            new_department = change_department(user_prompt, current_interaction.department.name)
+            if new_department and new_department != current_interaction.department.name:
+                # Save the current interaction before changing the department
+                current_interaction.department = Department.objects.filter(name=new_department).first()
+                current_interaction.save()
+                system_instructions.append("The interatction has been assigned to a different department. Please redirect the conversation accordingly and inform the user." 
+                                            " The new department instructions are: " 
+                                            f"{current_interaction.department.prompt}")
+                print(f"[Gemini] Changed department to {new_department} for interaction {current_interaction.id}", flush=True)
+            else:
+                system_instructions.append(f"{current_interaction.department.prompt}")
 
     history = current_interaction.conversation if current_interaction else []
-    client = genai.Client(api_key=api_key())
-    chat = client.chats.create(
+    gemini_client = genai.Client(api_key=api_key())
+    system_instruction_text = normalize_system_instruction(system_instructions)
+    config = types.GenerateContentConfig(system_instruction=system_instruction_text) if system_instruction_text else None
+    #print(f"[Gemini] System instructions: {system_instruction_text}", flush=True)
+    chat = gemini_client.chats.create(
         model="gemini-2.5-flash",
         history=history,
+        config=config,
     )
-    response = chat.send_message(message=prompt)
-    #print("Chat History:")
-    #print(chat.get_history())
-    # Save the history to the interaction
+    response = chat.send_message(message=user_prompt)
     if not current_interaction:
         current_interaction = Interaction.objects.create(client=client, conversation=serialize_chat_history(chat.get_history()))
     else:
@@ -255,3 +279,39 @@ def serialize_chat_history(chat_history):
         })
         
     return serialized_data
+
+def create_interactions():
+    # This function should create a dummy interaction for testing purposes it should have a conversation with gemini_prompt
+    interaction = Interaction.objects.create(conversation=[])
+    system_instruction = "You are role-playing as a lawfirm client that is seeking legal advice. Provide information about your legal issue as prompted by a legal assistant. Please provide realistic legal issues, but one that straddles the line between two or more legal areas, and respond to the legal assistant's questions accordingly."
+    gemini_client = genai.Client(api_key=api_key())
+    i = 0
+    end_interaction = False
+    print(f"[Gemini] Starting interaction loop for interaction {interaction.id}", flush=True)
+    client_chat = gemini_client.chats.create(
+            model="gemini-2.5-flash",
+            config=types.GenerateContentConfig(system_instruction=system_instruction),
+        )
+    client_response = client_chat.send_message(message="Please provide a very unique name, email, and password to get started.",)
+    client_text = client_response.text
+    while not end_interaction and i < 10:
+        i += 1
+        assistant_response = gemini_prompt(client_text, interaction_id=interaction.id)
+        client_response = client_chat.send_message(message=assistant_response)
+        client_text = client_response.text
+        end_interaction_response = gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=client_chat.get_history(),
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": InteractionCompleted.model_json_schema(),
+            },
+        )
+        end_interaction = json.loads(end_interaction_response.text).get("completed")
+        #print(f"[Gemini] Interaction completed status: {end_interaction}", flush=True)
+
+    return {
+        "interaction_id": interaction.id,
+        "completed": bool(end_interaction),
+        "iterations": i,
+    }

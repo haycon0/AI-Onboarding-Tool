@@ -65,6 +65,11 @@ class Interaction(models.Model):
     )
     
     title = models.CharField(max_length=255, blank=True)
+    system_instructions = models.TextField(
+        blank=True,
+        default="",
+        help_text="System instructions used to initialize the interaction"
+    )
     conversation = models.JSONField(
         default=list,
         help_text="Stores the entire AI discussion as JSON array"

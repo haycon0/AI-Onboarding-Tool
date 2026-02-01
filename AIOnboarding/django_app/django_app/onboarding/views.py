@@ -1,11 +1,11 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse, JsonResponse
 from django.template import loader
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from .models import Client, Interaction, Department
 import json
-from .gemini import gemini_prompt, gemini_prompt_department
+from .gemini import gemini_prompt, gemini_prompt_department, create_interactions
 
 
 def index(request):
@@ -18,6 +18,46 @@ def clients(request):
 def departments(request):
     template = loader.get_template('departments.html')
     return HttpResponse(template.render())
+
+
+def interactions_list(request):
+    interactions = Interaction.objects.select_related('client', 'department').all()
+    context = {
+        "interactions": interactions,
+    }
+    return render(request, "interactions_list.html", context)
+
+
+def _flatten_conversation(conversation):
+    messages = []
+    if not isinstance(conversation, list):
+        return messages
+    for entry in conversation:
+        role = entry.get("role", "user") if isinstance(entry, dict) else "user"
+        parts = entry.get("parts", []) if isinstance(entry, dict) else []
+        texts = []
+        for part in parts:
+            text = part.get("text") if isinstance(part, dict) else None
+            if text:
+                texts.append(text)
+        if texts:
+            messages.append({
+                "role": role,
+                "text": "\n".join(texts),
+            })
+    return messages
+
+
+def interaction_detail(request, interaction_id):
+    interaction = get_object_or_404(
+        Interaction.objects.select_related('client', 'department'),
+        id=interaction_id,
+    )
+    context = {
+        "interaction": interaction,
+        "messages": _flatten_conversation(interaction.conversation),
+    }
+    return render(request, "interaction_detail.html", context)
 
 
 @csrf_exempt
@@ -34,27 +74,17 @@ def receive_message(request):
         interaction_id = data.get('interaction_id')
 
         print(f"[Django] Interaction ID from chainlit: {interaction_id}", flush=True)
-        
-        # If the interaction_id is null then create a new interaction
+            # If the interaction_id is null then create a new interaction
         if not interaction_id:
-            new_interaction = Interaction.objects.create(conversation=[])
-            print(f"[Django] Created new interaction with ID {new_interaction.id}", flush=True)
-            interaction_id = new_interaction.id
-            original_prompt = prompt
-            departments = ", ".join([dept.name for dept in Department.objects.all()])
-            prompt = f"""
-            This text is from the system to initialize a new interaction:
-            This interaction is to onboard a client to a law firm. 
-            The first step is to gather basic information about the client and their legal needs. 
-            This begins with determining if they have used this AI onboarding tool before and if they are already in our system.
-            To do this we need their name and password. Please request this if they have not provided it or it is unclear.
-            We also need to determine what department can assist them with their legal needs.
-            If they do not know which department can assist them, please ask clarifying questions about their legal needs to determine the appropriate department.
-            Once you feel an appropriate amount of information has been gathered, thank the client, confirm their details, inform them that their information has been recorded, and end the interaction.
-            The available departments are: {departments}.
-            This text is the initial message from the client: {original_prompt}"""
-        
-
+            current_interaction = Interaction.objects.create(conversation=[])
+            print(f"[Django] Created new interaction with ID {current_interaction.id}", flush=True)
+        else:
+            try:
+                current_interaction = Interaction.objects.get(id=interaction_id)
+            except Interaction.DoesNotExist:
+                print(f"[Gemini] Interaction {interaction_id} not found, creating new one", flush=True)
+                current_interaction = Interaction.objects.create(conversation=[])
+        interaction_id = current_interaction.id
         if not prompt:
             return JsonResponse({
                 'status': 'error',
@@ -128,6 +158,28 @@ def receive_message_department(request):
         }, status=400)
     except Exception as e:
         print(f"[Django] Error receiving message for department: {e}", flush=True)
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def create_interactions_endpoint(request):
+    return JsonResponse({
+            'status': 'error',
+            'message': 'Creating interactions is currently disabled'
+        }, status=500)
+    """
+    API endpoint to create a dummy interaction for testing.
+    """
+    try:
+        for _ in range(10):
+            create_interactions()
+        return interactions_list(request)
+    except Exception as e:
+        print(f"[Django] Error creating interaction: {e}", flush=True)
         return JsonResponse({
             'status': 'error',
             'message': str(e)

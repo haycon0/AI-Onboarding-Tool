@@ -25,8 +25,11 @@ urlpatterns = [
     path("", views.index, name="index"),
     path('client/', views.clients, name="clients"),
     path('attorney/', views.departments, name="departments"),
+    path('interactions/', views.interactions_list, name="interactions_list"),
+    path('interactions/<int:interaction_id>/', views.interaction_detail, name="interaction_detail"),
     path('api/message/', views.receive_message, name='receive_message'),
     path('api/attorney_message/', views.receive_message_department, name="receive_message_department"),
+    path('api/create_interactions/', views.create_interactions_endpoint, name="create_interactions"),
 ]
 
 # Serve media files in development

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interactions</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 24px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border-bottom: 1px solid #e0e0e0;
+            text-align: left;
+            padding: 12px 8px;
+        }
+        th {
+            background: #f7f7f7;
+        }
+        a {
+            color: #2b6cb0;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .empty {
+            padding: 24px;
+            color: #666;
+            background: #fafafa;
+            border: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <h1>Interactions</h1>
+
+    {% if interactions %}
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Client</th>
+                <th>Department</th>
+                <th>Created</th>
+                <th>Updated</th>
+                <th>Link</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for interaction in interactions %}
+            <tr>
+                <td>{{ interaction.id }}</td>
+                <td>{{ interaction.client.name|default:"Unassigned" }}</td>
+                <td>{{ interaction.department.name|default:"Unassigned" }}</td>
+                <td>{{ interaction.created_at }}</td>
+                <td>{{ interaction.updated_at }}</td>
+                <td><a href="{% url 'interaction_detail' interaction.id %}">View</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <div class="empty">No interactions found.</div>
+    {% endif %}
+</body>
+</html>
